@@ -121,7 +121,7 @@ Handles audio extraction, speech detection using Silero VAD, and transcription u
 Extracts video metadata and keyframes using FFmpeg.
 
 ### FrameAnalyzer
-Filters similar frames, detects blur, and selects representative frames using K-means clustering.
+Filters similar frames, detects blur, and selects representative frames using CLIP similarity to product-related text prompts.
 
 ### MultimodalExtractor
 Performs object detection (YOLO) and scene understanding (BLIP).

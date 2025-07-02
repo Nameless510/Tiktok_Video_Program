@@ -1,17 +1,17 @@
 import os
 import cv2
 import numpy as np
-from sklearn.cluster import MiniBatchKMeans
-from sklearn.metrics.pairwise import euclidean_distances
 from skimage.metrics import structural_similarity as ssim
-from shared_models import yolo_model, TIKTOK_PRODUCT_CLASSES
+from shared_models import yolo_model, clip_model, clip_preprocess, TIKTOK_PRODUCT_CLASSES
+import torch
+from PIL import Image
 
 class FrameAnalyzer:
     """Frame analysis: filtering, clustering, and product detection."""
     def __init__(self):
         self.yolo_model = yolo_model
 
-    def filter_similar_keyframes(self, keyframes_dir, video_name, ssim_threshold=0.95):
+    def filter_similar_keyframes(self, keyframes_dir, video_name, ssim_threshold=0.8):
         if not os.path.exists(keyframes_dir):
             return []
         frame_files = [f for f in sorted(os.listdir(keyframes_dir)) if f.endswith('.jpg') and f.startswith(f'{video_name}_keyframe_')]
@@ -133,11 +133,11 @@ class FrameAnalyzer:
 
     def get_representative_frames(self, keyframes_dir, video_name):
         """
-        Select 2-5 representative frames using YOLO detection first, then KMeans clustering.
+        Select 2-5 representative frames using YOLO detection and CLIP similarity.
         1. Filter out black/blank frames, then blurry frames.
         2. Extract YOLO features for all valid frames.
         3. Separate product frames and non-product frames.
-        4. Cluster product frames first, then non-product frames if needed.
+        4. Use CLIP to select frames most similar to product-related text.
         5. Select representative frames prioritizing product frames.
         """
         if not os.path.exists(keyframes_dir):
@@ -185,72 +185,107 @@ class FrameAnalyzer:
         
         print(f"  - Found {len(product_frames)} product frames, {len(non_product_frames)} non-product frames")
         
-        # Step 5: Determine number of clusters needed
-        n_clusters = self.get_representative_frame_count(len(frame_infos))
+        # Step 5: Determine number of frames needed
+        n_frames = self.get_representative_frame_count(len(frame_infos))
         
-        # Step 6: Select representative frames
+        # Step 6: Select representative frames using CLIP
         representative_frames = []
         
-        # First, try to select from product frames
+        # Product-related text prompts for CLIP
+        product_prompts = [
+            "product", "item", "goods", "merchandise", "commodity",
+            "clothing", "electronics", "accessories", "beauty products",
+            "fashion", "shopping", "retail", "commercial"
+        ]
+        
+        # First, try to select from product frames using CLIP
         if product_frames:
-            if len(product_frames) <= n_clusters:
+            if len(product_frames) <= n_frames:
                 # Use all product frames
                 representative_frames = [f['frame_path'] for f in product_frames]
             else:
-                # Cluster product frames to select best ones
-                product_features = self._extract_color_features([f['frame_path'] for f in product_frames])
-                if len(product_features) > 0:
-                    kmeans = MiniBatchKMeans(n_clusters=min(n_clusters, len(product_frames)), 
-                                           random_state=42, batch_size=100)
-                    cluster_labels = kmeans.fit_predict(product_features)
-                    
-                    for i in range(min(n_clusters, len(product_frames))):
-                        cluster_indices = [j for j in range(len(product_frames)) if cluster_labels[j] == i]
-                        cluster_frames = product_features[cluster_indices]
-                        distances = euclidean_distances(cluster_frames, [kmeans.cluster_centers_[i]])
-                        closest_idx = np.argmin(distances)
-                        representative_frames.append(product_frames[cluster_indices[closest_idx]]['frame_path'])
+                # Use CLIP to select best product frames
+                selected_product_frames = self._select_frames_with_clip(
+                    [f['frame_path'] for f in product_frames], 
+                    product_prompts, 
+                    min(n_frames, len(product_frames))
+                )
+                representative_frames = selected_product_frames
         
-        # If we need more frames, add from non-product frames
-        if len(representative_frames) < n_clusters and non_product_frames:
-            remaining_needed = n_clusters - len(representative_frames)
+        # If we need more frames, add from non-product frames using CLIP
+        if len(representative_frames) < n_frames and non_product_frames:
+            remaining_needed = n_frames - len(representative_frames)
             if len(non_product_frames) <= remaining_needed:
                 representative_frames.extend([f['frame_path'] for f in non_product_frames])
             else:
-                # Cluster non-product frames to select best ones
-                non_product_features = self._extract_color_features([f['frame_path'] for f in non_product_frames])
-                if len(non_product_features) > 0:
-                    kmeans = MiniBatchKMeans(n_clusters=remaining_needed, random_state=42, batch_size=100)
-                    cluster_labels = kmeans.fit_predict(non_product_features)
-                    
-                    for i in range(remaining_needed):
-                        cluster_indices = [j for j in range(len(non_product_frames)) if cluster_labels[j] == i]
-                        cluster_frames = non_product_features[cluster_indices]
-                        distances = euclidean_distances(cluster_frames, [kmeans.cluster_centers_[i]])
-                        closest_idx = np.argmin(distances)
-                        representative_frames.append(non_product_frames[cluster_indices[closest_idx]]['frame_path'])
+                # Use CLIP to select best non-product frames
+                selected_non_product_frames = self._select_frames_with_clip(
+                    [f['frame_path'] for f in non_product_frames], 
+                    product_prompts, 
+                    remaining_needed
+                )
+                representative_frames.extend(selected_non_product_frames)
         
         # If still not enough frames, pad by repeating the last one
-        while len(representative_frames) < n_clusters:
+        while len(representative_frames) < n_frames:
             if representative_frames:
                 representative_frames.append(representative_frames[-1])
             else:
                 # Fallback to first valid frame
                 representative_frames.append(valid_frames[0])
         
-        return representative_frames[:n_clusters]
+        return representative_frames[:n_frames]
     
-    def _extract_color_features(self, frame_paths):
-        """Extract color histogram features for clustering."""
-        features = []
-        for frame_path in frame_paths:
-            frame = cv2.imread(frame_path)
-            if frame is not None:
-                hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-                hist = cv2.calcHist([hsv], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
-                hist = hist.flatten() / hist.sum()
-                features.append(hist)
-        return np.array(features) if features else np.array([])
+    def _select_frames_with_clip(self, frame_paths, text_prompts, n_select):
+        """
+        Use CLIP to select frames most similar to product-related text prompts.
+        """
+        if not frame_paths or n_select <= 0:
+            return []
+        
+        try:
+            # Encode text prompts
+            text_inputs = torch.cat([clip_preprocess(text).unsqueeze(0) for text in text_prompts])
+            text_features = clip_model.encode_text(text_inputs.to(clip_model.device))
+            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+            
+            # Encode images
+            image_features = []
+            valid_frame_paths = []
+            
+            for frame_path in frame_paths:
+                try:
+                    # Load and preprocess image for CLIP
+                    image = Image.open(frame_path).convert('RGB')
+                    image_input = clip_preprocess(image).unsqueeze(0)
+                    image_feature = clip_model.encode_image(image_input.to(clip_model.device))
+                    image_feature = image_feature / image_feature.norm(dim=-1, keepdim=True)
+                    image_features.append(image_feature)
+                    valid_frame_paths.append(frame_path)
+                except Exception as e:
+                    print(f"Error processing image {frame_path}: {e}")
+                    continue
+            
+            if not image_features:
+                return frame_paths[:n_select]
+            
+            # Calculate similarities
+            image_features = torch.cat(image_features, dim=0)
+            similarities = torch.matmul(image_features, text_features.T)
+            
+            # Get average similarity across all prompts
+            avg_similarities = similarities.mean(dim=1)
+            
+            # Select top n frames
+            top_indices = torch.argsort(avg_similarities, descending=True)[:n_select]
+            selected_frames = [valid_frame_paths[i] for i in top_indices]
+            
+            return selected_frames
+            
+        except Exception as e:
+            print(f"Error in CLIP selection: {e}")
+            # Fallback to simple selection
+            return frame_paths[:n_select]
 
     def save_representative_frames(self, representative_frames, output_dir, video_name):
         os.makedirs(output_dir, exist_ok=True)

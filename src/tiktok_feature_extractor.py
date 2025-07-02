@@ -1,6 +1,7 @@
 import os
 import json
 import pandas as pd
+import time
 from tqdm import tqdm
 from audio_processor import AudioProcessor
 from video_processor import VideoProcessor
@@ -16,9 +17,13 @@ class TikTokFeatureExtractor:
         self.multimodal_extractor = MultimodalExtractor()
 
     def extract_video_features(self, video_path, output_dir):
-        """Extract comprehensive features from a single video."""
+        """Extract comprehensive features from a single video with timing."""
         video_name = os.path.splitext(os.path.basename(video_path))[0]
         print(f"\nProcessing video: {video_name}")
+        
+        # Initialize timing dictionary
+        timing_stats = {}
+        total_start_time = time.time()
         
         features = {
             'video_path': video_path,
@@ -45,52 +50,102 @@ class TikTokFeatureExtractor:
             
             # 1. Extract video metadata
             print("  - Extracting video metadata...")
+            start_time = time.time()
             metadata = self.video_processor.get_video_metadata(video_path)
             features.update(metadata)
+            timing_stats['video_metadata'] = time.time() - start_time
+            print(f"    ✓ Video metadata: {timing_stats['video_metadata']:.2f}s")
             
             # 2. Process audio (extract, detect speech, transcribe)
             print("  - Processing audio...")
+            start_time = time.time()
             audio_results = self.audio_processor.process_audio_for_video(video_path, output_dir)
             features.update(audio_results)
+            timing_stats['audio_processing'] = time.time() - start_time
+            print(f"    ✓ Audio processing: {timing_stats['audio_processing']:.2f}s")
             
             # 3. Extract keyframes
             print("  - Extracting keyframes...")
+            start_time = time.time()
             keyframes_dir, keyframe_count = self.video_processor.extract_keyframes(video_path, output_dir)
             features['keyframe_count'] = keyframe_count
+            timing_stats['keyframe_extraction'] = time.time() - start_time
+            print(f"    ✓ Keyframe extraction: {timing_stats['keyframe_extraction']:.2f}s")
             
             if keyframe_count > 0:
                 # 4. Filter similar keyframes
                 print("  - Filtering similar keyframes...")
+                start_time = time.time()
                 filtered_frames = self.frame_analyzer.filter_similar_keyframes(keyframes_dir, video_name)
-                print(f"  - Kept {len(filtered_frames)} frames after filtering")
+                timing_stats['frame_filtering'] = time.time() - start_time
+                print(f"    ✓ Frame filtering: {timing_stats['frame_filtering']:.2f}s")
+                print(f"    - Kept {len(filtered_frames)} frames after filtering")
                 
                 # 5. Select representative frames
                 print("  - Selecting representative frames...")
+                start_time = time.time()
                 representative_frames = self.frame_analyzer.get_representative_frames(keyframes_dir, video_name)
+                timing_stats['representative_selection'] = time.time() - start_time
                 features['representative_frame_count'] = len(representative_frames)
+                print(f"    ✓ Representative selection: {timing_stats['representative_selection']:.2f}s")
                 
                 # 6. Save representative frames
                 print("  - Saving representative frames...")
+                start_time = time.time()
                 self.frame_analyzer.save_representative_frames(representative_frames, output_dir, video_name)
+                timing_stats['frame_saving'] = time.time() - start_time
+                print(f"    ✓ Frame saving: {timing_stats['frame_saving']:.2f}s")
                 
                 # 7. Extract multimodal features
                 print("  - Extracting multimodal features...")
+                start_time = time.time()
                 multimodal_features = self.multimodal_extractor.extract_multimodal_features_for_frames(keyframes_dir, video_name)
+                timing_stats['multimodal_extraction'] = time.time() - start_time
+                print(f"    ✓ Multimodal extraction: {timing_stats['multimodal_extraction']:.2f}s")
                 
                 # Save multimodal features
+                start_time = time.time()
                 multimodal_path = os.path.join(output_dir, "multimodal_features.json")
                 with open(multimodal_path, "w", encoding="utf-8") as f:
                     json.dump(multimodal_features, f, ensure_ascii=False, indent=2)
                 features['multimodal_features_path'] = multimodal_path
+                timing_stats['multimodal_saving'] = time.time() - start_time
+                print(f"    ✓ Multimodal saving: {timing_stats['multimodal_saving']:.2f}s")
                 
                 # Generate summaries
+                start_time = time.time()
                 yolo_summary, blip_summary = self.multimodal_extractor.summarize_multimodal_features(multimodal_features)
                 features['yolo_summary'] = yolo_summary
                 features['blip_summary'] = blip_summary
+                timing_stats['summary_generation'] = time.time() - start_time
+                print(f"    ✓ Summary generation: {timing_stats['summary_generation']:.2f}s")
                 
                 # Count text frames (removed OCR dependency)
                 features['text_frame_count'] = 0
-                
+            else:
+                timing_stats['frame_filtering'] = 0
+                timing_stats['representative_selection'] = 0
+                timing_stats['frame_saving'] = 0
+                timing_stats['multimodal_extraction'] = 0
+                timing_stats['multimodal_saving'] = 0
+                timing_stats['summary_generation'] = 0
+            
+            # Calculate total time
+            total_time = time.time() - total_start_time
+            timing_stats['total_time'] = total_time
+            
+            # Print simple timing summary
+            print(f"\n⏱️  Time Summary for {video_name}:")
+            print(f"  Total time: {total_time:.2f}s")
+            # Show the slowest step
+            if timing_stats:
+                slowest_step = max([(k, v) for k, v in timing_stats.items() if k != 'total_time'], key=lambda x: x[1])
+                print(f"  Slowest step: {slowest_step[0].replace('_', ' ')} ({slowest_step[1]:.2f}s)")
+            
+            # Add timing info to features
+            features['processing_time'] = total_time
+            features['timing_stats'] = timing_stats
+            
             print(f"  ✓ Completed processing {video_name}")
             
         except Exception as e:
