@@ -1,8 +1,56 @@
-# Model files (too large for GitHub)
+# 忽略常见大模型权重和缓存
+models/
 *.pt
-*.pth
+*.bin
+*.ckpt
+*.safetensors
 *.onnx
+*.h5
+*.pth
+*.npz
+*.npy
 *.pb
+*.tflite
+*.mlmodel
+*.tar.gz
+*.zip
+*.tar
+*.rar
+*.7z
+
+# HuggingFace/transformers/modelscope 缓存
+~/.cache/
+~/.huggingface/
+~/.modelscope/
+.cache/
+.huggingface/
+.modelscope/
+
+# 数据集和输出
+*.csv
+*.tsv
+demo_output/
+tiktok_frames/
+tiktok_videos/
+
+# Jupyter/VSCode/IDE 临时文件
+.ipynb_checkpoints/
+.vscode/
+*.log
+*.tmp
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+
+# Python 编译文件
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 其他
+SimSun.ttf
 
 # Data files
 *.mp4
@@ -15,17 +63,15 @@
 *.aac
 *.ogg
 
+# Results files
+*.json
+speech_text.txt
+
 # Frame directories (generated data)
 tiktok_frames/
 tiktok_videos/
 
-# Results files
-*.csv
-*.json
-speech_text.txt
-
 # Python
-__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -47,9 +93,6 @@ wheels/
 *.egg
 MANIFEST
 
-# Jupyter Notebook
-.ipynb_checkpoints
-
 # Environment
 .env
 .venv
@@ -60,7 +103,6 @@ env.bak/
 venv.bak/
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -76,9 +118,7 @@ ehthumbs.db
 Thumbs.db
 
 # Logs
-*.log
 logs/
 
 # Temporary files
-*.tmp
 *.temp 

@@ -5,6 +5,7 @@ from skimage.metrics import structural_similarity as ssim
 from shared_models import yolo_model, clip_model, clip_preprocess, TIKTOK_PRODUCT_CLASSES
 import torch
 from PIL import Image
+import shutil
 
 class FrameAnalyzer:
     """Frame analysis: filtering, clustering, and product detection."""
@@ -244,9 +245,14 @@ class FrameAnalyzer:
             return []
         
         try:
-            # Encode text prompts
-            text_inputs = torch.cat([clip_preprocess(text).unsqueeze(0) for text in text_prompts])
-            text_features = clip_model.encode_text(text_inputs.to(clip_model.device))
+            # Get CLIP model device safely
+            from shared_models import clip_model, clip_preprocess
+            clip_device = next(clip_model.parameters()).device
+            
+            # Encode text prompts - use tokenize for text
+            import clip as openai_clip
+            text_tokens = openai_clip.tokenize(text_prompts).to(clip_device)
+            text_features = clip_model.encode_text(text_tokens)
             text_features = text_features / text_features.norm(dim=-1, keepdim=True)
             
             # Encode images
@@ -257,8 +263,8 @@ class FrameAnalyzer:
                 try:
                     # Load and preprocess image for CLIP
                     image = Image.open(frame_path).convert('RGB')
-                    image_input = clip_preprocess(image).unsqueeze(0)
-                    image_feature = clip_model.encode_image(image_input.to(clip_model.device))
+                    image_input = clip_preprocess(image).unsqueeze(0).to(clip_device)
+                    image_feature = clip_model.encode_image(image_input)
                     image_feature = image_feature / image_feature.norm(dim=-1, keepdim=True)
                     image_features.append(image_feature)
                     valid_frame_paths.append(frame_path)
@@ -288,21 +294,27 @@ class FrameAnalyzer:
             return frame_paths[:n_select]
 
     def save_representative_frames(self, representative_frames, output_dir, video_name):
-        os.makedirs(output_dir, exist_ok=True)
-        for old_file in os.listdir(output_dir):
-            if old_file.startswith(f'{video_name}_representative_'):
-                os.remove(os.path.join(output_dir, old_file))
-        rep_set = set(os.path.abspath(f) for f in representative_frames)
-        idx_map = {os.path.abspath(f): i for i, f in enumerate(representative_frames)}
-        for file in os.listdir(output_dir):
-            if file.endswith('.jpg') and file.startswith(f'{video_name}_keyframe_'):
-                file_path = os.path.join(output_dir, file)
-                abs_path = os.path.abspath(file_path)
-                if abs_path in rep_set:
-                    idx = idx_map[abs_path]
-                    new_filename = f'{video_name}_representative_{idx+1:02d}.jpg'
-                    new_path = os.path.join(output_dir, new_filename)
-                    os.rename(file_path, new_path)
-                    print(f"  - Saved representative frame: {new_filename}")
-                else:
-                    os.remove(file_path) 
+        """Save representative frames to output directory and clean up keyframes."""
+        try:
+            # Save representative frames
+            for i, frame_path in enumerate(representative_frames):
+                # Create new filename
+                new_filename = f"{video_name}_representative_{i:02d}.jpg"
+                new_path = os.path.join(output_dir, new_filename)
+                
+                # Copy frame to new location
+                shutil.copy2(frame_path, new_path)
+            
+            # Clean up: remove all original keyframe files
+            keyframe_files = [f for f in os.listdir(output_dir) 
+                            if f.endswith('.jpg') and f.startswith(f'{video_name}_keyframe_')]
+            
+            for keyframe_file in keyframe_files:
+                keyframe_path = os.path.join(output_dir, keyframe_file)
+                try:
+                    os.remove(keyframe_path)
+                except Exception as e:
+                    print(f"  - Warning: Could not remove {keyframe_file}: {e}")
+                
+        except Exception as e:
+            print(f"Error saving representative frames: {e}") 

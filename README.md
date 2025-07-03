@@ -7,8 +7,8 @@ A comprehensive Python toolkit for extracting multimodal features from TikTok vi
 - **Video Processing**: Metadata extraction, keyframe detection, and representative frame selection
 - **Audio Analysis**: Speech detection, audio extraction, and transcription using Whisper
 - **Visual Analysis**: Object detection (YOLO), scene understanding (BLIP), and blur detection
-- **Visual Analysis**: Object detection (YOLO), scene understanding (BLIP)
 - **Multimodal Integration**: Combined analysis of audio, visual, and textual features
+- **AI-Powered Categorization**: Qwen-VL multimodal analysis for product categorization and video description
 
 ## Project Structure
 
@@ -18,7 +18,8 @@ tiktok/
 │   ├── audio_processor.py      # Audio extraction and speech recognition
 │   ├── video_processor.py      # Video metadata and keyframe extraction
 │   ├── frame_analyzer.py       # Frame filtering and representative selection
-│   ├── multimodal_extractor.py # YOLO, BLIP, and OCR analysis
+│   ├── multimodal_extractor.py # YOLO, BLIP, OCR, and Qwen-VL analysis
+│   ├── qwen_extractor_example.py # Example script for Qwen-VL usage
 │   ├── tiktok_feature_extractor.py # Main controller class
 │   └── shared_models.py        # Shared ML models and constants
 ├── tiktok_videos/              # Input video directory
@@ -81,6 +82,52 @@ df = extractor.extract_features_from_folder(
 )
 ```
 
+### Qwen-VL Multimodal Analysis
+
+```python
+from src.multimodal_extractor import MultimodalExtractor
+
+# Initialize the extractor
+extractor = MultimodalExtractor()
+
+# Example OCR results (from your OCR processing)
+ocr_results = {
+    "video1_representative_001.jpg": "Lipstick Collection",
+    "video1_representative_002.jpg": "Makeup Tutorial"
+}
+
+# Example audio transcript (from your audio processing)
+audio_transcript = "This is a makeup tutorial showing how to apply lipstick."
+
+# Extract Qwen features with OCR and audio context
+qwen_results = extractor.extract_qwen_features(
+    keyframes_dir="tiktok_frames/video1",
+    video_name="video1",
+    ocr_results=ocr_results,
+    audio_transcript=audio_transcript
+)
+
+# Generate CSV summary with video description and categorization
+summary_df = extractor.generate_video_summary_csv(
+    qwen_results, 
+    "video1_qwen_summary.csv"
+)
+
+print(f"Video Description: {summary_df.iloc[0]['Description_of_Video']}")
+print(f"Primary Category: {summary_df.iloc[0]['Primary_Category']}")
+print(f"Secondary Category: {summary_df.iloc[0]['Secondary_Category']}")
+print(f"Tertiary Category: {summary_df.iloc[0]['Tertiary_Category']}")
+```
+
+### Using the Example Script
+
+```bash
+# Run the Qwen extractor example
+python src/qwen_extractor_example.py
+
+# Analyze a single image
+python src/qwen_extractor_example.py single
+
 ### Jupyter Notebook
 
 Use the provided Jupyter notebook for interactive analysis:
@@ -109,8 +156,19 @@ The extractor generates the following features for each video:
 ### Multimodal Analysis
 - YOLO object detection summary
 - BLIP scene description summary
-- BLIP scene description summary
 - Detailed multimodal features JSON
+
+### AI-Powered Categorization (Qwen-VL)
+- **Video Description**: Detailed description of video content
+- **Primary Category**: Main product category (e.g., Beauty and Personal Care, Fashion, Electronics)
+- **Secondary Category**: Sub-category (e.g., Makeup, Clothing, Mobile Devices)
+- **Tertiary Category**: Specific product type (e.g., Foundation, Dresses, Smartphones)
+- **Category Confidence**: Confidence scores for each categorization level
+
+The categorization follows TikTok's product hierarchy:
+- **Primary**: Beauty and Personal Care, Fashion, Electronics, Home and Garden, Health and Wellness, Food and Beverages, Toys and Entertainment, Sports and Outdoor, Baby and Kids, Pet Supplies
+- **Secondary**: Specific subcategories within each primary category
+- **Tertiary**: Detailed product types within each subcategory
 
 ## Class Descriptions
 
@@ -124,7 +182,10 @@ Extracts video metadata and keyframes using FFmpeg.
 Filters similar frames, detects blur, and selects representative frames using CLIP similarity to product-related text prompts.
 
 ### MultimodalExtractor
-Performs object detection (YOLO) and scene understanding (BLIP).
+Performs object detection (YOLO), scene understanding (BLIP), and AI-powered categorization using Qwen-VL. Includes methods for:
+- `analyze_with_qwen()`: Analyze single image with OCR and audio context
+- `extract_qwen_features()`: Extract features from multiple frames
+- `generate_video_summary_csv()`: Generate CSV with video description and categorization
 
 ### TikTokFeatureExtractor
 Main controller class that orchestrates the entire feature extraction pipeline.
