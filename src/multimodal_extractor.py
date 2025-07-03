@@ -117,48 +117,39 @@ class MultimodalExtractor:
             print("DEBUG: Qwen model or tokenizer is None, fallback.")
             return self._create_fallback_result(image_path, ocr_text, audio_text)
         try:
-            context_parts = []
-            if yolo_objects:
-                for i, obj in enumerate(yolo_objects[:5]):
-                    if not isinstance(obj.get('class'), str):
-                        print(f"WARNING: yolo_objects[{i}]['class'] is not str! type: {type(obj.get('class'))}, value: {obj.get('class')}")
-                    if not isinstance(obj.get('confidence'), (float, int)):
-                        print(f"WARNING: yolo_objects[{i}]['confidence'] is not float or int! type: {type(obj.get('confidence'))}, value: {obj.get('confidence')}")
-                try:
-                    yolo_summary = ", ".join([f"{obj['class']} (confidence: {obj['confidence']:.2f})" for obj in yolo_objects[:5]])
-                except Exception as e:
-                    for i, obj in enumerate(yolo_objects[:5]):
-                        print(f"yolo_objects[{i}]: {obj}, class type: {type(obj.get('class'))}, confidence type: {type(obj.get('confidence'))}")
-                    raise
-                context_parts.append(f"Detected objects: {yolo_summary}")
-            if blip_caption:
-                try:
-                    context_parts.append(f"Image description: {blip_caption}")
-                except Exception as e:
-                    print("ERROR in blip_caption context append:", e, type(blip_caption), blip_caption)
-            if ocr_text:
-                try:
-                    context_parts.append(f"Text in image: {ocr_text}")
-                except Exception as e:
-                    print("ERROR in ocr_text context append:", e, type(ocr_text), ocr_text)
-            if audio_text:
-                try:
-                    context_parts.append(f"Audio transcription: {audio_text}")
-                except Exception as e:
-                    print("ERROR in audio_text context append:", e, type(audio_text), audio_text)
-            context = " | ".join(context_parts)
+            prompt = "Describe the picture shortly"
             query = self.qwen_tokenizer.from_list_format([
                 {'image': image_path},
-                {'text': context}
+                {'text': prompt}
             ])
-            response, history = self.qwen_model.chat(self.qwen_tokenizer, query=query, history=None)
-            if not response or response.strip() == '' or response.strip() in context or response.strip()[:100] in context:
-                print("[DEBUG] Qwen response is empty or just prompt repeat! Possible model/weight/input issue.")
-            
-            # Parse response
-            result = self._parse_qwen_response(response)
-            return result
-            
+            response, history = self.qwen_model.chat(self.qwen_tokenizer, query=query, history=None, max_new_tokens=64)
+            description = response.strip() if response else "No description available"
+
+            # 其它字段用fallback
+            fallback = self._create_fallback_result(image_path, ocr_text, audio_text)
+            fallback['description'] = description
+            return fallback
+
+            # --- 原有多字段Qwen推理逻辑已注释 ---
+            # context_parts = []
+            # if blip_caption:
+            #     context_parts.append(f"BLIP caption: {blip_caption}")
+            # if yolo_objects:
+            #     context_parts.append(f"YOLO objects: {', '.join([obj['class'] for obj in yolo_objects[:3]])}")
+            # if ocr_text:
+            #     context_parts.append(f"Text in image: {ocr_text}")
+            # if audio_text:
+            #     context_parts.append(f"Audio transcription: {audio_text}")
+            # context = " | ".join(context_parts)
+            # query = self.qwen_tokenizer.from_list_format([
+            #     {'image': image_path},
+            #     {'text': context}
+            # ])
+            # response, history = self.qwen_model.chat(self.qwen_tokenizer, query=query, history=None)
+            # if not response or response.strip() == '' or response.strip() in context or response.strip()[:100] in context:
+            #     print("[DEBUG] Qwen response is empty or just prompt repeat! Possible model/weight/input issue.")
+            # result = self._parse_qwen_response(response)
+            # return result
         except Exception as e:
             print("ERROR in enhanced Qwen analysis:", e)
             return self._create_fallback_result(image_path, ocr_text, audio_text)
@@ -372,7 +363,7 @@ class MultimodalExtractor:
         # Enhanced keyword matching with more specific categories
         categories = {
             'Beauty and Personal Care': {
-                'keywords': ['makeup', 'cosmetic', 'lipstick', 'foundation', 'skincare', 'beauty', 'perfume', 'shampoo', 'person', 'face', 'woman', 'girl'],
+                'keywords': ['makeup', 'cosmetic', 'lipstick', 'foundation', 'skincare', 'beauty', 'perfume', 'shampoo'],
                 'secondary': 'Makeup',
                 'tertiary': 'Foundation'
             },

@@ -78,6 +78,7 @@ class AudioProcessor:
             # Load audio
             wav, sr = torchaudio.load(audio_path)
             wav = wav.to(self.device)
+            wav = wav.to(torch.float32) 
             
             # Resample if needed
             if sr != 16000:
@@ -129,6 +130,8 @@ class AudioProcessor:
                 return ""
                 
             print(f"Transcribing audio: {audio_path}")
+            wav, sr = torchaudio.load(audio_path)
+            wav = wav.to(torch.float32)  
             result = model.transcribe(audio_path)
             transcribed_text = result.get("text", "").strip()
             

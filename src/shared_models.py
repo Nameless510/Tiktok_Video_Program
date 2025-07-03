@@ -41,133 +41,89 @@ if not hasattr(clip_model, 'device'):
     clip_model.device = next(clip_model.parameters()).device
 
 # Qwen-VL model for multimodal analysis
-def load_qwen_model():
-    """Load Qwen-VL model for multimodal analysis"""
-    try:
-        print("Loading Qwen-VL model...")
+#def load_qwen_model():
+#    """Load Qwen-VL model for multimodal analysis"""
+#    try:
+#        print("Loading Qwen-VL model...")
         
         # Check if model is already downloaded locally
-        local_model_path = "./models/qwen/Qwen-VL-Chat"
-        if os.path.exists(local_model_path):
-            print(f"Using local model: {local_model_path}")
-            model_dir = local_model_path
-        else:
-            print("Downloading Qwen-VL model... This may take a few minutes.")
-            model_dir = snapshot_download('qwen/Qwen-VL-Chat', cache_dir='./models')
-            print(f"Model downloaded to: {model_dir}")
+#        local_model_path = "./models/qwen/Qwen-VL-Chat"
+#        if os.path.exists(local_model_path):
+#            print(f"Using local model: {local_model_path}")
+#            model_dir = local_model_path
+#        else:
+#            print("Downloading Qwen-VL model... This may take a few minutes.")
+#            model_dir = snapshot_download('qwen/Qwen-VL-Chat', cache_dir='./models')
+#            print(f"Model downloaded to: {model_dir}")
         
         # Copy SimSun.ttf to model directory if it doesn't exist there
-        fonts_dir = os.path.join(os.getcwd(), 'fonts')
-        simsun_font_path = os.path.join(fonts_dir, 'SimSun.ttf')
-        model_font_path = os.path.join(model_dir, 'SimSun.ttf')
+#        fonts_dir = os.path.join(os.getcwd(), 'fonts')
+#        simsun_font_path = os.path.join(fonts_dir, 'SimSun.ttf')
+#        model_font_path = os.path.join(model_dir, 'SimSun.ttf')
         
-        if os.path.exists(simsun_font_path) and not os.path.exists(model_font_path):
-            import shutil
-            shutil.copy2(simsun_font_path, model_font_path)
-            print(f"Copied SimSun.ttf to model directory")
+#        if os.path.exists(simsun_font_path) and not os.path.exists(model_font_path):
+#            import shutil
+#            shutil.copy2(simsun_font_path, model_font_path)
+#            print(f"Copied SimSun.ttf to model directory")
         
-        print("Loading tokenizer...")
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_dir, 
-            trust_remote_code=True,
-            padding_side='left'
-        )
-        print("Tokenizer loaded successfully")
+#        print("Loading tokenizer...")
+#        tokenizer = AutoTokenizer.from_pretrained(
+#            model_dir, 
+#            trust_remote_code=True,
+#            padding_side='left'
+#        )
+#        print("Tokenizer loaded successfully")
         
-        print("Loading model...")
+#        print("Loading model...")
         
-        if torch.cuda.is_available():
-            try:
-                quantization_config = BitsAndBytesConfig(
-                    load_in_8bit=True,
-                    llm_int8_enable_fp32_cpu_offload=True
-                )
-                model = AutoModelForCausalLM.from_pretrained(
-                    model_dir,
-                    trust_remote_code=True,
-                    device_map="auto",
-                    quantization_config=quantization_config,
-                    low_cpu_mem_usage=True
-                ).eval()
-                print("✓ Model loaded in 8bit quantization with cpu offload!")
-            except Exception as e:
-                print(f"[Fallback] 8bit quantization+offload failed: {e}\nTrying to load model on CPU only...")
-                model = AutoModelForCausalLM.from_pretrained(
-                    model_dir,
-                    trust_remote_code=True,
-                    device_map="cpu"
-                ).eval()
-                print("✓ Model loaded on CPU only (no quantization)")
-        else:
-            model = AutoModelForCausalLM.from_pretrained(
-                model_dir,
-                trust_remote_code=True,
-                torch_dtype=torch.float32,
-                device_map="cpu"
-            ).eval()
+#        if torch.cuda.is_available():
+#            model = AutoModelForCausalLM.from_pretrained(
+#                model_dir,
+#                trust_remote_code=True,
+#                torch_dtype=torch.float32,
+#                device_map="cpu",
+#                low_cpu_mem_usage=True
+#            ).eval()
+#            print("✓ Model loaded on GPU")
+#        else:
+#            model = AutoModelForCausalLM.from_pretrained(
+#                model_dir,
+#                trust_remote_code=True,
+#                torch_dtype=torch.float32,
+#                device_map="cpu"
+#            ).eval()
+#            print("✓ Model loaded on CPU")
         
         # Fix generation config
-        if hasattr(model, 'generation_config'):
-            model.generation_config.chat_format = 'chatml'
-            # Add missing attributes
-            if not hasattr(model.generation_config, 'max_window_size'):
-                model.generation_config.max_window_size = 6144
-            if not hasattr(model.generation_config, 'chat_format'):
-                model.generation_config.chat_format = 'chatml'
+#        if hasattr(model, 'generation_config'):
+#            model.generation_config.chat_format = 'chatml'
+#            # Add missing attributes
+#            if not hasattr(model.generation_config, 'max_window_size'):
+#                model.generation_config.max_window_size = 6144
+#            if not hasattr(model.generation_config, 'chat_format'):
+#                model.generation_config.chat_format = 'chatml'
         
-        print("✓ Qwen-VL model loaded successfully!")
-        return model, tokenizer
+#        print("✓ Qwen-VL model loaded successfully!")
+#        return model, tokenizer
         
-    except Exception as e:
-        print(f"Warning: Qwen-VL model failed to load: {e}")
-        print("Trying alternative loading method...")
-        
-        try:
-            # Alternative method with different settings
-            local_model_path = "./models/qwen/Qwen-VL-Chat"
-            if os.path.exists(local_model_path):
-                model_dir = local_model_path
-            else:
-                model_dir = snapshot_download('qwen/Qwen-VL-Chat', cache_dir='./models')
-            
-            # Copy SimSun.ttf to model directory if it doesn't exist there
-            fonts_dir = os.path.join(os.getcwd(), 'fonts')
-            simsun_font_path = os.path.join(fonts_dir, 'SimSun.ttf')
-            model_font_path = os.path.join(model_dir, 'SimSun.ttf')
-            
-            if os.path.exists(simsun_font_path) and not os.path.exists(model_font_path):
-                import shutil
-                shutil.copy2(simsun_font_path, model_font_path)
-                print(f"Copied SimSun.ttf to model directory")
-            
-            tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-            model = AutoModelForCausalLM.from_pretrained(
-                model_dir,
-                trust_remote_code=True,
-                torch_dtype=torch.float32,
-                device_map="cuda:0",  # 强制加载到 GPU
-                fp16=True
-            ).eval()
-            
-            # Fix generation config
-            if hasattr(model, 'generation_config'):
-                model.generation_config.chat_format = 'chatml'
-                # Add missing attributes
-                if not hasattr(model.generation_config, 'max_window_size'):
-                    model.generation_config.max_window_size = 6144
-                if not hasattr(model.generation_config, 'chat_format'):
-                    model.generation_config.chat_format = 'chatml'
-            
-            print("✓ Qwen-VL model loaded on GPU successfully!")
-            return model, tokenizer
-            
-        except Exception as e2:
-            print(f"Alternative loading also failed: {e2}")
-            print("The system will work without Qwen-VL functionality.")
-            print("To enable Qwen-VL, ensure you have sufficient disk space and memory.")
-            return None, None
+#    except Exception as e:
+#        print("Failed to load Qwen-VL model:", e)
+#        return None, None
 
-qwen_model, qwen_tokenizer = load_qwen_model()
+#qwen_model, qwen_tokenizer = load_qwen_model()
+
+model_dir = "D:/tiktok/models/qwen/Qwen-VL-Chat" 
+
+qwen_tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+qwen_model = AutoModelForCausalLM.from_pretrained(
+    model_dir, device_map="cuda:0", trust_remote_code=True, fp16=True
+).eval()
+
+qwen_model.generation_config.chat_format = 'chatml'
+qwen_model.generation_config.max_window_size = 6144
+
+#qwen_model = None
+#qwen_tokenizer = None
 print("[DEBUG] Qwen model type:", type(qwen_model))
 print("[DEBUG] Has chat method:", hasattr(qwen_model, 'chat'))
 print("[DEBUG] Qwen tokenizer type:", type(qwen_tokenizer))
