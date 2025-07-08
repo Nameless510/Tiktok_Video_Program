@@ -1,0 +1,26 @@
+services:
+  tiktok-analyzer:
+    build: .
+    container_name: tiktok-video-analyzer
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./test:/app/test  
+      - ./tiktok_video_project.ipynb:/app/tiktok_video_project.ipynb
+    environment:
+      - PYTHONPATH=/app
+      - CUDA_VISIBLE_DEVICES=0
+      - YOLO_CONFIG_DIR=/tmp/ultralytics
+    working_dir: /app
+    restart: unless-stopped
+    command: ["jupyter", "notebook", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=''", "--NotebookApp.password=''", "--NotebookApp.allow_origin='*'", "--NotebookApp.allow_remote_access=True"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu] 

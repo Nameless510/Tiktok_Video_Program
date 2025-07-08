@@ -1,228 +1,115 @@
 # TikTok Video Feature Extractor
 
-A comprehensive Python toolkit for extracting multimodal features from TikTok videos, including audio, visual, and textual analysis.
+A comprehensive Python toolkit for extracting multimodal features from TikTok videos, including audio, visual, and textual analysis. Supports both research and production workflows, with modular design and robust test coverage.
 
-## Features
+---
 
-- **Video Processing**: Metadata extraction, keyframe detection, and representative frame selection
-- **Audio Analysis**: Speech detection, audio extraction, and transcription using Whisper
-- **Visual Analysis**: Object detection (YOLO), scene understanding (BLIP), and blur detection
-- **Multimodal Integration**: Combined analysis of audio, visual, and textual features
-- **AI-Powered Categorization**: Qwen-VL multimodal analysis for product categorization and video description
+## Project Overview
+This project implements automatic multimodal feature extraction for TikTok short videos. It processes batches of videos to extract:
+- Video metadata (duration, resolution, frame rate, file size)
+- Audio features (speech, music, events, transcription)
+- Visual features (keyframes, representative frames, object detection, blur/black frame filtering)
+- Multimodal features (YOLO, BLIP, CLIP, Qwen-VL)
+- AI-powered categorization and video description
+
+**Use Cases:**
+- Product and content categorization for e-commerce
+- Video search and recommendation
+- Dataset creation for machine learning
+- Research on multimodal video understanding
+
+---
+
+## Workflow
+1. **Video Collection**: Place `.mp4` files in `data/tiktok_videos/`.
+2. **Metadata Extraction**: Use FFmpeg to extract duration, resolution, frame rate, and file size.
+3. **Audio Processing**:
+   - Extract audio as 16kHz mono WAV.
+   - Separate vocals/non-vocals (Demucs).
+   - Transcribe speech (Whisper).
+   - Recognize music (Shazamio).
+   - Detect events (sound, music, speech, ambient).
+   - Save results as JSON, TXT, and CSV.
+4. **Keyframe Extraction**:
+   - Extract I-frames and sampled frames (1 each second).
+   - Extract highlight frames from speech segments.
+   - Save all frames in `data/tiktok_frames/<video_name>/`.
+5. **Frame Filtering & Selection**:
+   - Remove similar frames (SSIM > 0.8).
+   - Filter black/blur frames.
+   - Detect objects (YOLO-World).
+   - Select 2-5 representative frames using CLIP and product prompts.
+   - Save representative frames and timestamps.
+6. **Multimodal Analysis**:
+   - Extract YOLO, BLIP, and CLIP features for each representative frame.
+   - Use Qwen-VL-Chat for video description and multi-level categorization.
+   - Aggregate results across frames.
+7. **Result Saving**:
+   - Save all features and analysis to `video_features_results.csv`.
+8. **Batch & Single Video Support**: Process single videos or entire folders.
+
+---
 
 ## Project Structure
-
 ```
 tiktok/
 ├── src/
-│   ├── audio_processor.py      # Audio extraction and speech recognition
-│   ├── video_processor.py      # Video metadata and keyframe extraction
-│   ├── frame_analyzer.py       # Frame filtering and representative selection
-│   ├── multimodal_extractor.py # YOLO, BLIP, OCR, and Qwen-VL analysis
-│   ├── qwen_extractor_example.py # Example script for Qwen-VL usage
-│   ├── tiktok_feature_extractor.py # Main controller class
-│   └── shared_models.py        # Shared ML models and constants
-├── tiktok_videos/              # Input video directory
-├── tiktok_frames/              # Output frames directory
-├── requirements.txt            # Python dependencies
-└── README.md                   # This file
+│   ├── audio_processor.py         # Audio extraction, separation, speech/music/event analysis
+│   ├── video_processor.py         # Video metadata and keyframe extraction
+│   ├── frame_analyzer.py          # Frame filtering, blur/black detection, representative selection
+│   ├── multimodal_extractor.py    # YOLO, BLIP, CLIP, Qwen-VL analysis
+│   ├── tiktok_feature_extractor.py# Main pipeline controller
+│   └── shared_models.py           # Shared model loading/utilities/constants
+├── data/
+│   ├── tiktok_videos/             # Input videos
+│   └── tiktok_frames/             # Output frames
+├── models/                        # Model weights (Qwen, YOLO, etc.)
+├── test/                          # Test suite (see below)
+├── requirements.txt               # Python dependencies
+├── Dockerfile                     # Docker build
+├── docker-compose.yml             # Docker Compose (Jupyter, GPU)
+├── tiktok_video_project.ipynb     # Example notebook
+├── workflow_description.txt       # Detailed workflow
+└── README.md                      # This file
 ```
+---
 
-## Installation
-
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd tiktok
-   ```
-
-2. **Install Python dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Install FFmpeg** (required for audio extraction):
-   - **Windows**: Download from [FFmpeg website](https://ffmpeg.org/download.html) or use Chocolatey: `choco install ffmpeg`
-   - **macOS**: `brew install ffmpeg`
-   - **Linux**: `sudo apt install ffmpeg`
-
-4. **Download YOLO model** (if not already present):
-   ```bash
-   # The yolov8x.pt file should be in the project root
-   # If missing, it will be downloaded automatically on first use
-   ```
-
-## Usage
-
-### Basic Usage
-
-```python
-from src.tiktok_feature_extractor import TikTokFeatureExtractor
-
-# Initialize the extractor
-extractor = TikTokFeatureExtractor()
-
-# Extract features from a single video
-video_path = "tiktok_videos/example.mp4"
-output_dir = "tiktok_frames/example"
-csv_path = "results.csv"
-
-# Process the video
-df = extractor.extract_features_from_single_video(
-    video_path=video_path,
-    output_folder=output_dir,
-    csv_output_path=csv_path
-)
-
-# Extract features from all videos in a folder
-df = extractor.extract_features_from_folder(
-    video_folder="tiktok_videos/",
-    output_folder="tiktok_frames/",
-    csv_output_path="all_results.csv"
-)
-```
-
-### Qwen-VL Multimodal Analysis
-
-```python
-from src.multimodal_extractor import MultimodalExtractor
-
-# Initialize the extractor
-extractor = MultimodalExtractor()
-
-# Example OCR results (from your OCR processing)
-ocr_results = {
-    "video1_representative_001.jpg": "Lipstick Collection",
-    "video1_representative_002.jpg": "Makeup Tutorial"
-}
-
-# Example audio transcript (from your audio processing)
-audio_transcript = "This is a makeup tutorial showing how to apply lipstick."
-
-# Extract Qwen features with OCR and audio context
-qwen_results = extractor.extract_qwen_features(
-    keyframes_dir="tiktok_frames/video1",
-    video_name="video1",
-    ocr_results=ocr_results,
-    audio_transcript=audio_transcript
-)
-
-# Generate CSV summary with video description and categorization
-summary_df = extractor.generate_video_summary_csv(
-    qwen_results, 
-    "video1_qwen_summary.csv"
-)
-
-print(f"Video Description: {summary_df.iloc[0]['Description_of_Video']}")
-print(f"Primary Category: {summary_df.iloc[0]['Primary_Category']}")
-print(f"Secondary Category: {summary_df.iloc[0]['Secondary_Category']}")
-print(f"Tertiary Category: {summary_df.iloc[0]['Tertiary_Category']}")
-```
-
-### Using the Example Script
-
-```bash
-# Run the Qwen extractor example
-python src/qwen_extractor_example.py
-
-# Analyze a single image
-python src/qwen_extractor_example.py single
-
-### Jupyter Notebook
-
-Use the provided Jupyter notebook for interactive analysis:
-
-```bash
+## Jupyter Notebook
+Use the provided notebook for interactive exploration:
 jupyter notebook tiktok_video_project.ipynb
-```
+
+---
 
 ## Output Features
+The extractor generates the following for each video:
+- **Video Metadata**: duration, resolution, frame rate, file size
+- **Audio**: speech detection, transcription, music recognition, event detection
+- **Visual**: keyframe count, representative frames, object detection
+- **Multimodal**: YOLO/BLIP/CLIP features, Qwen-VL video description and categorization
+- **CSV/JSON/TXT**: All results saved in structured formats
 
-The extractor generates the following features for each video:
+**Example Output Files:**
+- `video_features_results.csv`: All features for all videos
+- `speech_transcription.txt`: Speech text per video
+- `audio_analysis_results.json`: Full audio analysis
+- `representative_timestamps.json`: List of selected frames
 
-### Video Metadata
-- Duration, resolution, frame rate, file size
+---
 
-### Audio Features
-- Audio file path
-- Speech detection (boolean)
-- Transcribed text and length
+## Module and Class Descriptions
+- **audio_processor.py**: Audio extraction, separation (Demucs), speech recognition (Whisper), music recognition (Shazamio), event detection, aggregation.
+- **video_processor.py**: Video metadata extraction, keyframe and highlight frame extraction.
+- **frame_analyzer.py**: Frame filtering (SSIM, blur, black), YOLO object detection, CLIP-based representative frame selection.
+- **multimodal_extractor.py**: Multimodal feature extraction (YOLO, BLIP, CLIP, Qwen-VL), video description, categorization, CSV summary.
+- **tiktok_feature_extractor.py**: Main pipeline controller for batch/single video processing.
+- **shared_models.py**: Model loading, constants, product/category definitions.
 
-### Visual Features
-- Keyframe count
-- Representative frame count
-- Representative frame count
-
-### Multimodal Analysis
-- YOLO object detection summary
-- BLIP scene description summary
-- Detailed multimodal features JSON
-
-### AI-Powered Categorization (Qwen-VL)
-- **Video Description**: Detailed description of video content
-- **Primary Category**: Main product category (e.g., Beauty and Personal Care, Fashion, Electronics)
-- **Secondary Category**: Sub-category (e.g., Makeup, Clothing, Mobile Devices)
-- **Tertiary Category**: Specific product type (e.g., Foundation, Dresses, Smartphones)
-- **Category Confidence**: Confidence scores for each categorization level
-
-The categorization follows TikTok's product hierarchy:
-- **Primary**: Beauty and Personal Care, Fashion, Electronics, Home and Garden, Health and Wellness, Food and Beverages, Toys and Entertainment, Sports and Outdoor, Baby and Kids, Pet Supplies
-- **Secondary**: Specific subcategories within each primary category
-- **Tertiary**: Detailed product types within each subcategory
-
-## Class Descriptions
-
-### AudioProcessor
-Handles audio extraction, speech detection using Silero VAD, and transcription using OpenAI Whisper.
-
-### VideoProcessor
-Extracts video metadata and keyframes using FFmpeg.
-
-### FrameAnalyzer
-Filters similar frames, detects blur, and selects representative frames using CLIP similarity to product-related text prompts.
-
-### MultimodalExtractor
-Performs object detection (YOLO), scene understanding (BLIP), and AI-powered categorization using Qwen-VL. Includes methods for:
-- `analyze_with_qwen()`: Analyze single image with OCR and audio context
-- `extract_qwen_features()`: Extract features from multiple frames
-- `generate_video_summary_csv()`: Generate CSV with video description and categorization
-
-### TikTokFeatureExtractor
-Main controller class that orchestrates the entire feature extraction pipeline.
-
-## Troubleshooting
-
-### Audio Extraction Issues
-1. Ensure FFmpeg is properly installed and accessible in PATH
-2. Check video file has audio stream: `ffprobe video.mp4`
-3. Verify audio file creation and size after extraction
-
-### Model Loading Issues
-1. Check internet connection for model downloads
-2. Ensure sufficient disk space for model files
-3. Verify CUDA installation if using GPU
-
-### Memory Issues
-1. Process videos one at a time for large datasets
-2. Reduce batch sizes in model inference
-3. Use CPU instead of GPU if memory is limited
+---
 
 ## Requirements
-
 - Python 3.8+
 - FFmpeg
 - CUDA (optional, for GPU acceleration)
 - 8GB+ RAM recommended
 - 10GB+ disk space for models and outputs
-
-## License
-
-This project is for research and educational purposes.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request 
+- See `requirements.txt` for all Python dependencies

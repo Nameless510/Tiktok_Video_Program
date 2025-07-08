@@ -50,11 +50,20 @@ class TikTokFeatureExtractor:
             # 2. Process audio
             audio_results = self.audio_processor.process_audio_for_video(video_path, output_dir)
             features.update(audio_results)
-            
-            # 3. Extract keyframes
-            keyframes_dir, keyframe_count = self.video_processor.extract_keyframes(video_path, output_dir)
+
+            # 2.5. Extract speech_segments for smart frame extraction
+            speech_segments = None
+            if isinstance(audio_results, dict):
+                speech_segments = (
+                    audio_results.get('structured_data', {})
+                    .get('speech_analysis', {})
+                    .get('segments', [])
+                )
+
+            # 3. Extract keyframes (with speech_segments for highlight frames)
+            keyframes_dir, keyframe_count = self.video_processor.extract_keyframes(video_path, output_dir, speech_segments=speech_segments)
             features['keyframe_count'] = keyframe_count
-            
+
             if keyframe_count > 0:
                 # 4. Filter similar keyframes
                 filtered_frames = self.frame_analyzer.filter_similar_keyframes(keyframes_dir, video_name)
@@ -65,13 +74,10 @@ class TikTokFeatureExtractor:
                 
                 # 6. Save representative frames
                 self.frame_analyzer.save_representative_frames(representative_frames, output_dir, video_name)
-                
-                # 7. Extract Qwen-VL features
-                qwen_results = self.multimodal_extractor.extract_qwen_features(
-                    keyframes_dir, 
-                    video_name, 
-                    audio_transcript=audio_results.get('speech_text', '')
-                )
+                self.frame_analyzer.save_representative_timestamps(output_dir, video_name)
+
+                # 8. Extract Qwen-VL features
+                qwen_results = self.multimodal_extractor.extract_qwen_features(output_dir, video_name, audio_transcript=audio_results.get('speech_text', ''))
                 
                 # Update features with Qwen results
                 if qwen_results:

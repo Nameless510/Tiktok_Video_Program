@@ -31,6 +31,7 @@ class MultimodalExtractor:
         """
         try:
             # Step 1: Extract features from all models
+            if not os.path.exists(image_path): print(f"Warning: file does not exist: {image_path}"); return
             yolo_objects = self._extract_yolo_features(image_path)
             blip_caption = self._extract_blip_caption(image_path)
             clip_embedding = self._extract_clip_embedding(image_path)
@@ -49,6 +50,7 @@ class MultimodalExtractor:
     def _extract_yolo_features(self, image_path):
         """Extract YOLO object detection results."""
         try:
+            if not os.path.exists(image_path): print(f"Warning: file does not exist: {image_path}"); return
             results = self.yolo_model(image_path)
             objects = []
             
@@ -73,6 +75,7 @@ class MultimodalExtractor:
     def _extract_blip_caption(self, image_path):
         """Extract BLIP image caption."""
         try:
+            if not os.path.exists(image_path): print(f"Warning: file does not exist: {image_path}"); return
             image = Image.open(image_path).convert("RGB")
             inputs = self.blip_processor(image, return_tensors="pt")
             
@@ -96,6 +99,7 @@ class MultimodalExtractor:
     def _extract_clip_embedding(self, image_path):
         """Extract CLIP image embedding."""
         try:
+            if not os.path.exists(image_path): print(f"Warning: file does not exist: {image_path}"); return
             image = Image.open(image_path).convert("RGB")
             # Ensure the preprocessed image is a tensor
             preprocessed = self.clip_preprocess(image)
@@ -125,12 +129,12 @@ class MultimodalExtractor:
             response, history = self.qwen_model.chat(self.qwen_tokenizer, query=query, history=None, max_new_tokens=64)
             description = response.strip() if response else "No description available"
 
-            # 其它字段用fallback
+            # Other fields use fallback
             fallback = self._create_fallback_result(image_path, ocr_text, audio_text)
             fallback['description'] = description
             return fallback
 
-            # --- 原有多字段Qwen推理逻辑已注释 ---
+            # --- Original multi-field Qwen inference logic commented out ---
             # context_parts = []
             # if blip_caption:
             #     context_parts.append(f"BLIP caption: {blip_caption}")
@@ -157,7 +161,7 @@ class MultimodalExtractor:
     def _parse_qwen_response(self, response):
         """Parse Qwen response with improved JSON extraction."""
         try:
-            # 宽容提取第一个大括号包裹的JSON内容
+            # Tolerantly extract the first JSON content wrapped in braces
             match = re.search(r'\{[\s\S]*?\}', response)
             if match:
                 json_str = match.group(0)
@@ -309,6 +313,7 @@ class MultimodalExtractor:
         """Create fallback result when Qwen is not available."""
         try:
             # Use BLIP and YOLO for fallback
+            if not os.path.exists(image_path): print(f"Warning: file does not exist: {image_path}"); return
             blip_caption = self._extract_blip_caption(image_path)
             yolo_objects = self._extract_yolo_features(image_path)
             
@@ -411,39 +416,28 @@ class MultimodalExtractor:
         
         return best_category
 
-    def extract_qwen_features(self, keyframes_dir, video_name, ocr_results=None, audio_transcript=""):
-        """Extract features for all representative frames using enhanced analysis."""
+    def extract_qwen_features(self, frame_dir, video_name=None, audio_transcript=""):
+        """Extract features for all representative frames in a directory using enhanced analysis."""
         results = []
-        
-        for filename in sorted(os.listdir(keyframes_dir)):
-            if filename.endswith('.jpg') and filename.startswith(f'{video_name}_representative_'):
-                frame_path = os.path.join(keyframes_dir, filename)
-                
-                # Get OCR text for this frame
-                ocr_text = ""
-                if ocr_results and filename in ocr_results:
-                    ocr_text = ocr_results[filename]
-                
-                # Analyze frame with comprehensive features
-                analysis = self.extract_comprehensive_features(
-                    frame_path, ocr_text, audio_transcript
-                )
-                
-                results.append({
-                    "frame": filename,
-                    "frame_path": frame_path,
-                    "description": analysis['description'],
-                    "primary_category": analysis['primary_category'],
-                    "secondary_category": analysis['secondary_category'],
-                    "tertiary_category": analysis['tertiary_category'],
-                    "content_type": analysis['content_type'],
-                    "target_audience": analysis['target_audience'],
-                    "audio_relevance": analysis.get('audio_relevance', 'unknown'),
-                    "audio_summary": analysis.get('audio_summary', 'none'),
-                    "ocr_text": ocr_text
-                })
-        
-        # Aggregate results - return only the fields expected by main feature extractor
+        frame_files = sorted([os.path.join(frame_dir, f) for f in os.listdir(frame_dir) if f.endswith('.jpg') or f.endswith('.png')])
+        for frame_path in frame_files:
+            ocr_text = ""  # 可根据需要扩展 OCR
+            analysis = self.extract_comprehensive_features(
+                frame_path, ocr_text, audio_transcript
+            )
+            results.append({
+                "frame": os.path.basename(frame_path),
+                "frame_path": frame_path,
+                "description": analysis['description'],
+                "primary_category": analysis['primary_category'],
+                "secondary_category": analysis['secondary_category'],
+                "tertiary_category": analysis['tertiary_category'],
+                "content_type": analysis['content_type'],
+                "target_audience": analysis['target_audience'],
+                "audio_relevance": analysis.get('audio_relevance', 'unknown'),
+                "audio_summary": analysis.get('audio_summary', 'none'),
+                "ocr_text": ocr_text
+            })
         if not results:
             return {
                 'video_description': '',
@@ -451,27 +445,18 @@ class MultimodalExtractor:
                 'secondary_category': 'Unknown',
                 'tertiary_category': 'Unknown'
             }
-        
-        # Aggregate by frequency
         descriptions = [r['description'] for r in results]
         categories = {}
-        
         for result in results:
-            # Count categories
             for key in ['primary_category', 'secondary_category', 'tertiary_category']:
                 if key not in categories:
                     categories[key] = {}
                 cat = result[key]
                 categories[key][cat] = categories[key].get(cat, 0) + 1
-        
-        # Get most common categories
         most_common = {}
         for key in categories:
             most_common[key] = max(categories[key].items(), key=lambda x: x[1])[0]
-        
-        # Create summary - return only the expected fields for backward compatibility
         summary_description = " | ".join(descriptions[:3])
-        
         return {
             'video_description': summary_description,
             'primary_category': most_common['primary_category'],

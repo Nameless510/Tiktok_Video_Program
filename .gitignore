@@ -16,8 +16,11 @@
 *.ogg
 
 # Frame directories (generated data)
-tiktok_frames/
-tiktok_videos/
+data/tiktok_frames/
+data/tiktok_videos/
+
+# model files
+models/
 
 # Results files
 *.csv

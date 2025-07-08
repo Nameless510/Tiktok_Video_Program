@@ -1,0 +1,50 @@
+This project implements automatic multimodal feature extraction for TikTok short videos. The overall workflow is as follows:
+
+1. Video Collection and Preparation
+- All .mp4 videos to be processed are placed in the data/tiktok_videos directory.
+- The program automatically traverses this directory, counts the number of videos, and prepares for batch processing.
+
+2. Video Metadata Extraction
+- Use ffmpeg.probe to obtain basic information such as duration, resolution, frame rate, and file size for each video.
+- Results are written to the feature dictionary.
+
+3. Audio Processing and Speech Recognition
+- Use ffmpeg to extract audio tracks as 16kHz mono wav files.
+- Use Demucs v4 (htdemucs) for two-stem separation: vocals (human voice) and non_vocals (accompaniment/non-voice).
+- Speech recognition: transcribe vocals.wav as a whole using Whisper, output plain text.
+- Music recognition: use Shazamio to identify background music from non_vocals.wav.
+- Event detection: detect sound, music, speech, and ambient events from the original audio.
+- Result aggregation: output all analysis results in structured format.
+- Output files:
+   - audio_analysis_results.json: full structured analysis results
+   - speech_transcription.txt: only the speech transcription (always written, even if empty)
+   - CSV: speech_text, music_title, music_artist fields
+
+4. Keyframe Extraction
+- Use ffmpeg to extract I-frames (keyframes), save each frame as a jpg image with naming format "video_name_keyframe_XXXX.jpg". Also sample 1 sampled frames evenly from each second. Multiple highlight frames would be extract from segments with high confidency of human voice (>= 0.95)
+- For each video, all extracted frames (keyframes, sampled frames, highlight frames) are saved in a dedicated per-video directory (e.g., data/tiktok_frames/<video_name>), with filenames containing their timestamp (e.g., _12.34.jpg).
+
+5. Keyframe Filtering and Representative Frame Selection
+- Use structural similarity (SSIM) to compare adjacent frames, frames with similarity > 0.8 are deleted.
+- Detect brightness and sharpness, filter out black frames and blurry frames.
+- Use YOLO-World model to perform object detection on each frame, record categories and confidence scores.
+- Distinguish between "product frames" and "non-product frames" based on detection results.
+- If there are many product frames, use CLIP model combined with product-related text to filter the most representative frames.
+- Automatically select 2-5 representative frames based on total frame count
+- The system supports multi-selection of representative frames: for each video, 2-5 frames are chosen to maximize content diversity, product relevance, and visual distinctiveness. Selection is based on a combination of product detection (YOLO), visual similarity filtering (SSIM), and CLIP model semantic similarity to product-related prompts. All selected frames are managed and output as described below.
+- After representative frame selection, only the selected frames are kept: each is moved (not copied) to the same directory and renamed to representative_<timestamp>.jpg, where <timestamp> is extracted from the original filename. All other jpg/jpeg/png files in that directory are deleted.
+- A JSON file named representative_timestamps.json is generated in the same directory, containing a list of the representative frame filenames and their timestamps, extracted via regex from the filenames.
+
+6. Multimodal Feature Fusion and Analysis
+- For each representative frame, extract YOLO detection results, BLIP image descriptions, and CLIP semantic features.
+- Use Qwen-VL-Chat model to perform multimodal analysis on representative frames, generating video descriptions and multi-level category labels.
+- Aggregate analysis results from all representative frames, count the most frequent categories.
+
+7. Result Saving
+- All features and analysis results are saved as video_features_results.csv, including metadata, audio transcription, representative frame analysis, category labels, etc. for each video.
+
+8. Batch and Single Video Processing
+- Supports single video and folder batch processing, automatically creates output directories, and outputs processing progress in real-time.
+
+
+

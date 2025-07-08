@@ -1,10 +1,40 @@
 from ultralytics import YOLOWorld, YOLO
-from transformers import BlipProcessor, BlipForConditionalGeneration, BitsAndBytesConfig
-import clip as openai_clip
 import torch
 import os
-from modelscope import AutoTokenizer, AutoModelForCausalLM
-from modelscope import snapshot_download
+import sys
+import tempfile
+import yaml
+import dora
+
+
+# Import transformers with error handling
+try:
+    from transformers import BlipProcessor, BlipForConditionalGeneration, BitsAndBytesConfig
+    print("Transformers imported successfully")
+except ImportError as e:
+    print(f"Error importing transformers: {e}")
+    BlipProcessor = None
+    BlipForConditionalGeneration = None
+    BitsAndBytesConfig = None
+
+# Import CLIP
+try:
+    import clip as openai_clip
+    print("CLIP imported successfully")
+except ImportError as e:
+    print(f"Error importing CLIP: {e}")
+    openai_clip = None
+
+# Import modelscope
+try:
+    from modelscope import AutoTokenizer, AutoModelForCausalLM
+    from modelscope import snapshot_download
+    print("ModelScope imported successfully")
+except ImportError as e:
+    print(f"Error importing ModelScope: {e}")
+    AutoTokenizer = None
+    AutoModelForCausalLM = None
+    snapshot_download = None
 
 # Global models for GPU acceleration
 # YOLO model - Using YOLO-World for better product detection
@@ -31,102 +61,78 @@ def load_yolo_model():
 yolo_model = load_yolo_model()
 
 # BLIP processor and model
-blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base").to("cuda" if torch.cuda.is_available() else "cpu")
+if BlipProcessor is not None and BlipForConditionalGeneration is not None:
+    try:
+        print("Loading BLIP model...")
+        blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+        blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+        blip_model = blip_model.to("cuda" if torch.cuda.is_available() else "cpu")
+        print("BLIP model loaded successfully")
+    except Exception as e:
+        print(f"Error loading BLIP model: {e}")
+        print("Setting BLIP model to None - some features may be limited")
+        blip_processor = None
+        blip_model = None
+else:
+    print("BLIP modules not available, setting to None")
+    blip_processor = None
+    blip_model = None
 
 # CLIP model and preprocess
-clip_model, clip_preprocess = openai_clip.load("ViT-B/32", device="cuda" if torch.cuda.is_available() else "cpu")
-# Ensure CLIP model has device attribute
-if not hasattr(clip_model, 'device'):
-    clip_model.device = next(clip_model.parameters()).device
+if openai_clip is not None:
+    try:
+        print("Loading CLIP model...")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        clip_model, clip_preprocess = openai_clip.load("ViT-B/32", device=device)
+        # Ensure CLIP model has device attribute
+        if not hasattr(clip_model, 'device'):
+            clip_model.device = device
+        print("CLIP model loaded successfully")
+    except Exception as e:
+        print(f"Error loading CLIP model: {e}")
+        print("Setting CLIP model to None - some features may be limited")
+        clip_model = None
+        clip_preprocess = None
+else:
+    print("CLIP module not available, setting to None")
+    clip_model = None
+    clip_preprocess = None
 
-# Qwen-VL model for multimodal analysis
-#def load_qwen_model():
-#    """Load Qwen-VL model for multimodal analysis"""
-#    try:
-#        print("Loading Qwen-VL model...")
-        
-        # Check if model is already downloaded locally
-#        local_model_path = "./models/qwen/Qwen-VL-Chat"
-#        if os.path.exists(local_model_path):
-#            print(f"Using local model: {local_model_path}")
-#            model_dir = local_model_path
-#        else:
-#            print("Downloading Qwen-VL model... This may take a few minutes.")
-#            model_dir = snapshot_download('qwen/Qwen-VL-Chat', cache_dir='./models')
-#            print(f"Model downloaded to: {model_dir}")
-        
-        # Copy SimSun.ttf to model directory if it doesn't exist there
-#        fonts_dir = os.path.join(os.getcwd(), 'fonts')
-#        simsun_font_path = os.path.join(fonts_dir, 'SimSun.ttf')
-#        model_font_path = os.path.join(model_dir, 'SimSun.ttf')
-        
-#        if os.path.exists(simsun_font_path) and not os.path.exists(model_font_path):
-#            import shutil
-#            shutil.copy2(simsun_font_path, model_font_path)
-#            print(f"Copied SimSun.ttf to model directory")
-        
-#        print("Loading tokenizer...")
-#        tokenizer = AutoTokenizer.from_pretrained(
-#            model_dir, 
-#            trust_remote_code=True,
-#            padding_side='left'
-#        )
-#        print("Tokenizer loaded successfully")
-        
-#        print("Loading model...")
-        
-#        if torch.cuda.is_available():
-#            model = AutoModelForCausalLM.from_pretrained(
-#                model_dir,
-#                trust_remote_code=True,
-#                torch_dtype=torch.float32,
-#                device_map="cpu",
-#                low_cpu_mem_usage=True
-#            ).eval()
-#            print("✓ Model loaded on GPU")
-#        else:
-#            model = AutoModelForCausalLM.from_pretrained(
-#                model_dir,
-#                trust_remote_code=True,
-#                torch_dtype=torch.float32,
-#                device_map="cpu"
-#            ).eval()
-#            print("✓ Model loaded on CPU")
-        
-        # Fix generation config
-#        if hasattr(model, 'generation_config'):
-#            model.generation_config.chat_format = 'chatml'
-#            # Add missing attributes
-#            if not hasattr(model.generation_config, 'max_window_size'):
-#                model.generation_config.max_window_size = 6144
-#            if not hasattr(model.generation_config, 'chat_format'):
-#                model.generation_config.chat_format = 'chatml'
-        
-#        print("✓ Qwen-VL model loaded successfully!")
-#        return model, tokenizer
-        
-#    except Exception as e:
-#        print("Failed to load Qwen-VL model:", e)
-#        return None, None
-
-#qwen_model, qwen_tokenizer = load_qwen_model()
-
-model_dir = "D:/tiktok/models/qwen/Qwen-VL-Chat" 
-
-qwen_tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-qwen_model = AutoModelForCausalLM.from_pretrained(
-    model_dir, device_map="cuda:0", trust_remote_code=True, fp16=True
-).eval()
-
-qwen_model.generation_config.chat_format = 'chatml'
-qwen_model.generation_config.max_window_size = 6144
-
-#qwen_model = None
-#qwen_tokenizer = None
-print("[DEBUG] Qwen model type:", type(qwen_model))
-print("[DEBUG] Has chat method:", hasattr(qwen_model, 'chat'))
-print("[DEBUG] Qwen tokenizer type:", type(qwen_tokenizer))
+# Qwen model loading section
+qwen_model = None
+qwen_tokenizer = None
+# try:
+#     from transformers import AutoTokenizer as HF_AutoTokenizer, AutoModelForCausalLM as HF_AutoModelForCausalLM
+#     print("Transformers imported for Qwen.")
+#     model_dir = os.path.abspath("models/qwen/Qwen-VL-Chat")
+#     print(f"Loading Qwen model from local path (transformers): {model_dir}")
+#     qwen_tokenizer = HF_AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
+#     if qwen_tokenizer.pad_token is None:
+#         qwen_tokenizer.pad_token = "<|extra_0|>"
+#         qwen_tokenizer.pad_token_id = qwen_tokenizer.convert_tokens_to_ids("<|extra_0|>")
+#     elif qwen_tokenizer.pad_token == qwen_tokenizer.eos_token:
+#         print("Warning: pad_token equals eos_token, setting pad_token to <|extra_0|>")
+#         qwen_tokenizer.pad_token = "<|extra_0|>"
+#         qwen_tokenizer.pad_token_id = qwen_tokenizer.convert_tokens_to_ids("<|extra_0|>")
+#     if torch.cuda.is_available():
+#         print("Using CUDA for Qwen model (transformers)")
+#         qwen_model = HF_AutoModelForCausalLM.from_pretrained(
+#             model_dir, device_map="cuda:0", trust_remote_code=True, torch_dtype=torch.float16
+#         ).eval()
+#     else:
+#         print("CUDA not available, using CPU for Qwen model (transformers)")
+#         qwen_model = HF_AutoModelForCausalLM.from_pretrained(
+#             model_dir, device_map="cpu", trust_remote_code=True, torch_dtype=torch.float32
+#         ).eval()
+#     if hasattr(qwen_model, 'generation_config'):
+#         qwen_model.generation_config.chat_format = 'chatml'
+#         qwen_model.generation_config.max_window_size = 6144
+#     print("Qwen model loaded successfully (transformers)")
+# except Exception as e:
+#     print(f"Transformers Qwen load failed: {e}")
+#     import traceback; traceback.print_exc()
+#     qwen_model = None
+#     qwen_tokenizer = None
 
 # TikTok product classes - Enhanced for YOLO-World product detection
 TIKTOK_PRODUCT_CLASSES = {
@@ -235,3 +241,120 @@ TIKTOK_CATEGORIES = {
         "Pet Health": ["Vitamins", "Medicine", "Dental care", "Flea treatment"]
     }
 } 
+
+# === Audio Models (Whisper, Silero-VAD, Demucs, Shazam) ===
+
+os.environ['NUMBA_CACHE_DIR'] = tempfile.gettempdir()
+
+def pip_install(package):
+    import subprocess
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+    except Exception as e:
+        print(f"Failed to install {package}: {e}")
+
+whisper_model = None
+try:
+    import whisper
+    # print("Loading Whisper model (large-v3)...")
+    # try:
+    #     whisper_model = whisper.load_model("large-v3", device="cuda" if torch.cuda.is_available() else "cpu")
+    #     print("Whisper large-v3 loaded on CUDA")
+    # except RuntimeError as e:
+    #     print(f"Whisper large-v3 CUDA failed: {e}")
+    #     print("Trying large-v3 on CPU...")
+    #     try:
+    #         whisper_model = whisper.load_model("large-v3", device="cpu")
+    #         print("Whisper large-v3 loaded on CPU")
+    #     except Exception as e:
+    #         print(f"Whisper large-v3 CPU failed: {e}")
+    #         print("Trying medium on CPU...")
+    #         try:
+    #             whisper_model = whisper.load_model("medium", device="cpu")
+    #             print("Whisper medium loaded on CPU")
+    #         except Exception as e:
+    #             print(f"Whisper medium failed: {e}")
+    #             print("Trying base on CPU...")
+    #             try:
+    #                 whisper_model = whisper.load_model("base", device="cpu")
+    #                 print("Whisper base loaded on CPU")
+    #             except Exception as e:
+    #                 print(f"Whisper base failed: {e}")
+    #                 whisper_model = None
+    print("Loading Whisper model (small)...")
+    whisper_model = whisper.load_model("small", device="cuda" if torch.cuda.is_available() else "cpu")
+    print("Whisper small loaded!")
+except ImportError as e:
+    print(f"Error importing whisper: {e}")
+    whisper_model = None
+
+# ========== Silero VAD ==========
+silero_vad_model = None
+try:
+    vad_package = torch.hub.load('snakers4/silero-vad', 'silero_vad', force_reload=False)
+    silero_vad_model = vad_package[0] if isinstance(vad_package, tuple) else vad_package
+    silero_vad_model = silero_vad_model.to("cuda" if torch.cuda.is_available() else "cpu")
+    silero_vad_model.eval()
+    print("Silero VAD model loaded successfully")
+except Exception as e:
+    print(f"Error loading Silero VAD model: {e}")
+    silero_vad_model = None
+
+# ========== Demucs (Hybrid) ==========
+demucs_model = None
+try:
+    try:
+        from demucs.pretrained import get_model
+    except ImportError:
+        get_model = None
+    if get_model is not None:
+        print("Loading Demucs model (pip version)...")
+        demucs_model = get_model("htdemucs")
+        if hasattr(demucs_model, 'to'):
+            demucs_model = demucs_model.to("cuda" if torch.cuda.is_available() else "cpu")
+        if hasattr(demucs_model, 'eval'):
+            demucs_model.eval()
+        print("Demucs model loaded successfully")
+    else:
+        print("demucs.pretrained.get_model not available.")
+        demucs_model = None
+except Exception as e:
+    print(f"Error loading Demucs model: {e}")
+    print("Demucs will be unavailable.")
+    demucs_model = None
+
+# ========== Shazamio (for music recognition) ==========
+shazamio = None
+shazam_client = None
+try:
+    try:
+        import shazamio
+        from shazamio import Shazam
+    except ImportError:
+        shazamio = None
+        Shazam = None
+    if shazamio is not None and Shazam is not None:
+        print("Shazamio imported successfully")
+        shazam_client = Shazam()
+    else:
+        print("shazamio not found, installing...")
+        pip_install('shazamio')
+        try:
+            import shazamio
+            from shazamio import Shazam
+            print("Shazamio installed and imported successfully")
+            shazam_client = Shazam()
+        except Exception as e:
+            print(f"Shazamio still not available: {e}")
+            shazamio = None
+            shazam_client = None
+except Exception as e:
+    print(f"Error loading Shazamio: {e}")
+    shazamio = None
+    shazam_client = None
+
+__all__ = [
+    'yolo_model', 'blip_processor', 'blip_model', 'clip_model', 'clip_preprocess',
+    'qwen_model', 'qwen_tokenizer',
+    'whisper_model', 'silero_vad_model', 'demucs_model', 'shazam_client'
+] 
